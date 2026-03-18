@@ -1,0 +1,12 @@
+langchain-ollama
+ollama
+langchain
+langchain-community
+langgraph
+transformers[torch]
+accelerate
+bitsandbytes
+
+langchain-core
+pandas
+streamlit
