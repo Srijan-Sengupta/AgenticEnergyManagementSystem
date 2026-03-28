@@ -120,12 +120,12 @@ def classify_sources(state: AgentActionState) -> Command[Literal["data_agent", "
     """
 
     classification = structured_text_llm.invoke(classifications_prompt)
-    logger.info(f"Classified Source: {classification.get('source', 'Unknown')}")
+    logger.info(f"Classified Source: {classification.get('source', 'Unknown')} | Reasoning: {classification.get('reasoning', 'None')}")
 
     intent = state["classification"]["intent"]
 
-    # BUG FIX: If intent is query, it MUST go to data_agent first to execute SQL
-    if intent in ["data_add", "data_modify", "query"]:
+    # BUG FIX: Ensure "report" also goes to data_agent to execute SQL data extraction
+    if intent in ["data_add", "data_modify", "query", "report"]:
         goto = "data_agent"
     else:
         goto = "report_agent"
@@ -199,20 +199,25 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
 
         return Command(goto="report_agent", update=updates)
     # --- CRUD OPERATIONS ---
-    elif intent in ["query", "data_modify"]:
+    elif intent in ["query", "data_modify", "report"]:
         current_schema = get_dynamic_schema(db_path)
-        action_type = "read-only SELECT query" if intent == "query" else "Data Manipulation Language (UPDATE, DELETE, INSERT) query"
-
+        action_type = "read-only SELECT query" if intent in ["query",
+                                                             "report"] else "Data Manipulation Language (UPDATE, DELETE, INSERT) query"
+        logger.info("current schema: {}".format(current_schema))
         sql_prompt = PromptTemplate.from_template("""
-        You are an expert SQLite developer. Write a {action_type} to fulfill the user's request.
-        Only return the raw SQL query. Do not wrap it in markdown formatting like ```sql.
+                    You are an expert SQLite developer. Write a {action_type} to fulfill the user's request.
+                    Only return the raw SQL query. Do not wrap it in markdown formatting like ```sql.
 
-        Current Database Schema:
-        {schema}
+                    Current Database Schema:
+                    {schema}
 
-        User Request: {question}
-        SQL Query:
-        """)
+                    CRITICAL INSTRUCTIONS:
+                    1. Intelligently map the user's vocabulary to the actual column names in the schema (e.g., if they ask for 'state' but the schema has 'region', use 'region').
+                    2. If a requested concept does not match the schema exactly, write the closest possible valid query using the available columns.
+
+                    User Request: {question}
+                    SQL Query:
+                    """)
 
         chain = sql_prompt | coder_llm
         raw_sql_response = chain.invoke({
@@ -225,15 +230,19 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
         sql_query = re.sub(r"```[sS][qQ][lL]?", "", raw_sql_response).replace("```", "").strip()
         logger.info(f"Generated Clean SQL: {sql_query}")
 
+        # Add generated SQL to the state messages so it appears in Streamlit UI logs
+        updates["messages"] = state.get("messages", []) + [f"Data Agent generated SQL: {sql_query}"]
+
         try:
             conn = sqlite3.connect(db_path)
-            if intent == "query":
+            if intent in ["query", "report"]:
                 results_df = pd.read_sql_query(sql_query, conn)
-                logger.info(f"Query returned {len(results_df)} rows.")
+                logger.info(
+                    f"Query returned {len(results_df)} rows. Sample Data: {results_df.to_dict(orient='records')}")
+
                 # Save to the new generalized state key
                 updates["db_search_results"] = results_df.to_dict(orient='records')
-                updates["messages"] = state.get("messages", []) + [
-                    f"Data Agent: Extracted {len(results_df)} rows via SQL."]
+                #updates["messages"].append(f"Data Agent: Extracted {len(results_df)} rows via SQL.")
                 next_node = "analysis_agent"
             else:
                 cursor = conn.cursor()
@@ -241,13 +250,13 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
                 conn.commit()
                 msg = f"Data Agent: Database updated successfully. {cursor.rowcount} row(s) affected."
                 logger.info(msg)
-                updates["messages"] = state.get("messages", []) + [msg]
+                updates["messages"].append(msg)
                 next_node = "report_agent"
             conn.close()
         except Exception as e:
             error_msg = f"SQL Execution Failed: {str(e)}\nAttempted Query: {sql_query}"
             logger.error(error_msg)
-            updates["messages"] = state.get("messages", []) + [f"Data Agent: {error_msg}"]
+            updates["messages"].append(f"Data Agent Error: {error_msg}")
             next_node = "report_agent"
 
         return Command(goto=next_node, update=updates)
@@ -258,7 +267,6 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
 def analysis_agent(state: AgentActionState) -> Command[Literal["report_agent"]]:
     logger.info("--- NODE: analysis_agent ---")
 
-    # FIX: Added strict rules to prevent grammar correction and meta-commentary
     analysis_prompt = f"""
     Analyze the following energy data to answer the user's query.
 
@@ -274,6 +282,9 @@ def analysis_agent(state: AgentActionState) -> Command[Literal["report_agent"]]:
     """
     response = reasoning_llm.invoke(analysis_prompt)
 
+    # DEBUG LOG ADDED HERE
+    logger.info(f"Analysis Agent Output:\n{response.content}\n{'-' * 40}")
+
     messages = state.get("messages", []) + [f"Analysis Agent: {response.content}"]
     logger.info("Analysis complete.")
     return Command(goto="report_agent", update={"messages": messages})
@@ -282,18 +293,23 @@ def analysis_agent(state: AgentActionState) -> Command[Literal["report_agent"]]:
 def report_agent(state: AgentActionState) -> Command[Literal["draft_response"]]:
     logger.info("--- NODE: report_agent ---")
 
-    # FIX: Ensure the final reporter also doesn't meta-commentate
     report_prompt = f"""
-    Draft a concise, professional response based on this analysis. 
-    DO NOT output your internal thought processes, meta-commentary, or grammar corrections. 
-    Just output the final answer to the user:
+    Draft a concise, professional response based on the agent logs and analysis below. 
 
+    CRITICAL RULES:
+    1. DO NOT output generic apologies, platitudes, or phrases like "To provide a meaningful analysis, please ensure...".
+    2. If the logs show an error (like a SQL failure), tell the user exactly what went wrong in plain English (e.g., "I encountered a SQL error because the column does not exist").
+    3. If the analysis is successful, output ONLY the final answer. DO NOT output your internal thought processes or meta-commentary.
+
+    Agent Logs & Analysis:
     {state.get('messages', ['No analysis available.'])}
     """
     response = reasoning_llm.invoke(report_prompt)
-    logger.info("Report drafted.")
-    return Command(goto="draft_response", update={"drafted_response": response.content})
 
+    # DEBUG LOG ADDED HERE
+    logger.info(f"Report Agent Drafted Response:\n{response.content}\n{'-' * 40}")
+
+    return Command(goto="draft_response", update={"drafted_response": response.content})
 
 def draft_response(state: AgentActionState):
     logger.info("--- NODE: draft_response ---")

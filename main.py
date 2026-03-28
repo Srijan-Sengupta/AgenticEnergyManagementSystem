@@ -48,49 +48,58 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["Assistant Chat", "Database Viewer"])
 
 # --- TAB 1: Chat Interface ---
+# --- TAB 1: Chat Interface ---
 with tab1:
+    # 1. Create a fixed-height, scrollable container for the chat history
+    chat_container = st.container(height=600)
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    # 2. Render all existing messages INSIDE the scrollable container
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
+    # 3. The chat input natively sticks to the bottom of the active tab/screen
     if prompt := st.chat_input("Ask about energy demand, supply, or outages..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
 
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # 4. Ensure new messages are also written INSIDE the container
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            with st.spinner("Agents are analyzing (Check terminal for debug logs)..."):
-                try:
-                    initial_state = {
-                        "user_request": prompt,
-                        "messages": []
-                    }
+            with st.chat_message("assistant"):
+                with st.spinner("Agents are analyzing (Check terminal for debug logs)..."):
+                    try:
+                        initial_state = {
+                            "user_request": prompt,
+                            "messages": []
+                        }
 
-                    result = agent_app.invoke(initial_state)
-                    response = result.get("drafted_response", "Error: No response drafted.")
+                        result = agent_app.invoke(initial_state)
+                        response = result.get("drafted_response", "Error: No response drafted.")
 
-                    # Cleanly strip out DeepSeek's <think> tags if they leak into the final response
-                    if "<think>" in response:
-                        response = response.split("</think>")[-1].strip()
+                        # Cleanly strip out DeepSeek's <think> tags if they leak into the final response
+                        if "<think>" in response:
+                            response = response.split("</think>")[-1].strip()
 
-                    st.markdown(response)
+                        st.markdown(response)
 
-                    # Show internal logs clearly
-                    if result.get("messages"):
-                        with st.expander("View Agent Internal Execution Logs"):
-                            for log in result["messages"]:
-                                st.info(log)
+                        # Show internal logs clearly
+                        if result.get("messages"):
+                            with st.expander("View Agent Internal Execution Logs"):
+                                for log in result["messages"]:
+                                    st.info(log)
 
-                except Exception as e:
-                    response = f"An error occurred during execution: {e}"
-                    st.error(response)
+                    except Exception as e:
+                        response = f"An error occurred during execution: {e}"
+                        st.error(response)
 
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
+                # Save the assistant's response to state
+                st.session_state.messages.append({"role": "assistant", "content": response})
 # --- TAB 2: Database Viewer ---
 with tab2:
     st.header("Database Tables")
