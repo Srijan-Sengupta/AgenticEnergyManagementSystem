@@ -2,7 +2,7 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph
 
 from app.core.state import AgentActionState
-from nodes import classify_intent, classify_sources, data_agent, analysis_agent, report_agent, draft_response
+from app.agent.nodes import classify_intent, classify_sources, data_agent, analysis_agent, report_agent, draft_response
 
 
 def build_graph():

@@ -9,7 +9,7 @@ from langgraph.types import Command
 from app.core.state import AgentActionState, ActionClassification, SourceClassification
 from app.core.config import DB_PATH
 from app.db.database import get_dynamic_schema
-from llm import reasoning_llm, coder_llm
+from app.agent.llm import reasoning_llm, coder_llm
 
 logger = logging.getLogger(__name__)
 
