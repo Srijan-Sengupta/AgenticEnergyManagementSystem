@@ -9,3 +9,4 @@ langchain-core
 langchain-ollama
 langgraph
 tabulate
+pandas-stubs

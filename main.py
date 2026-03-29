@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 
 from app.agent.graph import app as agent_app
-from app.core.config import DB_PATH
+from app.core.config import DB_PATH, DATA_DIR
 
 st.set_page_config(
     page_title="Energy Management Assistant",
@@ -21,7 +21,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
     if uploaded_file is not None:
-        file_path = uploaded_file.name
+        file_path = os.path.join(DATA_DIR, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.success(f"Saved `{file_path}` locally.")
@@ -47,7 +47,6 @@ with st.sidebar:
 # --- UI Layout: Main Tabs ---
 tab1, tab2 = st.tabs(["Assistant Chat", "Database Viewer"])
 
-# --- TAB 1: Chat Interface ---
 # --- TAB 1: Chat Interface ---
 with tab1:
     # 1. Create a fixed-height, scrollable container for the chat history
