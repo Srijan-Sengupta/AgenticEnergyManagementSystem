@@ -3,8 +3,8 @@ import os
 import sqlite3
 import pandas as pd
 
-# Import the compiled LangGraph app
-from agent_backend import app as agent_app
+from app.agent.graph import app as agent_app
+from app.core.config import DB_PATH
 
 st.set_page_config(
     page_title="Energy Management Assistant",
@@ -103,7 +103,7 @@ with tab1:
 # --- TAB 2: Database Viewer ---
 with tab2:
     st.header("Database Tables")
-    db_path = "energy_data.db"
+    db_path = DB_PATH
 
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
