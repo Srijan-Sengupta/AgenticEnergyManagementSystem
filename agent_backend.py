@@ -49,7 +49,7 @@ reasoning_llm = ChatOllama(
 )
 
 coder_llm = ChatOllama(
-    model="codeqwen:latest",
+    model="qwen2.5-coder:latest",
     temperature=0.0,
     num_ctx=2048
 )
@@ -156,7 +156,7 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
 
                 # 2. Extract a sample to show the LLM
                 columns = ", ".join(df.columns)
-                data_sample = df.head(3).to_markdown(index=False)
+                data_sample = df.head(1).to_markdown(index=False)
 
                 # 3. Ask the LLM to analyze the data and name the table
                 naming_prompt = PromptTemplate.from_template("""
@@ -170,7 +170,7 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
                     CRITICAL: Output ONLY the table name. No markdown, no quotes, no explanations.
                     """)
 
-                chain = naming_prompt | coder_llm
+                chain = naming_prompt | reasoning_llm
                 raw_name = chain.invoke({
                     "columns": columns,
                     "sample": data_sample
