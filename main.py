@@ -1,3 +1,5 @@
+import time
+
 import streamlit as st
 import os
 import sqlite3
@@ -5,6 +7,12 @@ import pandas as pd
 
 from app.agent.graph import app as agent_app
 from app.core.config import DB_PATH, DATA_DIR
+
+def stream_response(text):
+    """Generator to simulate streaming text output."""
+    for word in text.split(" "):
+        yield word + " "
+        time.sleep(0.02)
 
 st.set_page_config(
     page_title="Energy Management Assistant",
@@ -16,7 +24,7 @@ st.title("Agent-Based Energy Management Assistant")
 # --- UI Layout: Sidebar ---
 with st.sidebar:
     st.header("Data Management")
-    st.write("Upload CSVs. The filename becomes the table name (e.g., `outage_reports.csv` -> `outage_reports`).")
+    st.write("Upload CSVs.")
 
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -56,10 +64,16 @@ with tab1:
         st.session_state.messages = []
 
     # 2. Render all existing messages INSIDE the scrollable container
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        # 2. Render all existing messages INSIDE the scrollable container
+        with chat_container:
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+                    # Persist the logs/thoughts in an expander for past messages
+                    if message.get("logs"):
+                        with st.expander("🧠 View Agent Internal Execution Logs"):
+                            for log in message["logs"]:
+                                st.info(log)
 
     # 3. The chat input natively sticks to the bottom of the active tab/screen
     if prompt := st.chat_input("Ask about energy demand, supply, or outages..."):
@@ -71,34 +85,70 @@ with tab1:
                 st.markdown(prompt)
 
             with st.chat_message("assistant"):
-                with st.spinner("Agents are analyzing (Check terminal for debug logs)..."):
-                    try:
-                        initial_state = {
-                            "user_request": prompt,
-                            "messages": []
-                        }
+                agent_logs = []
+                final_state = None
 
-                        result = agent_app.invoke(initial_state)
-                        response = result.get("drafted_response", "Error: No response drafted.")
+                try:
+                    initial_state = {
+                        "user_request": prompt,
+                        "messages": []
+                    }
 
-                        # Cleanly strip out DeepSeek's <think> tags if they leak into the final response
-                        if "<think>" in response:
-                            response = response.split("</think>")[-1].strip()
+                    # Use st.status for interactive, real-time progress tracking
+                    with st.status("Initializing agents...", expanded=True) as status:
+                        # Stream through the LangGraph nodes instead of invoking all at once
+                        for event in agent_app.stream(initial_state):
+                            for node_name, node_state in event.items():
+                                # Dynamically update the UI text to show which agent is working
+                                status.update(label=f"⚙️ Agent `{node_name}` is working...", state="running")
+                                final_state = node_state  # Keep track of the latest state
 
-                        st.markdown(response)
+                                # Optionally write to the status box so users see the step history
+                                st.write(f"Completed step: **{node_name}**")
 
-                        # Show internal logs clearly
-                        if result.get("messages"):
-                            with st.expander("View Agent Internal Execution Logs"):
-                                for log in result["messages"]:
-                                    st.info(log)
+                        # Mark as complete and collapse the status box
+                        status.update(label="✅ Analysis complete!", state="complete", expanded=False)
 
-                    except Exception as e:
-                        response = f"An error occurred during execution: {e}"
-                        st.error(response)
+                    # Process the final state after the graph finishes
+                    if final_state:
+                        raw_response = final_state.get("drafted_response", "Error: No response drafted.")
 
-                # Save the assistant's response to state
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                        # Extract DeepSeek's <think> tags to display them in the logs
+                        if "<think>" in raw_response:
+                            parts = raw_response.split("</think>")
+                            think_content = parts[0].replace("<think>", "").strip()
+                            response = parts[-1].strip()
+                            if think_content:
+                                agent_logs.append(f"DeepSeek Reasoning:\n{think_content}")
+                        else:
+                            response = raw_response
+
+                        # Gather other internal graph logs
+                        if final_state.get("messages"):
+                            agent_logs.extend(final_state["messages"])
+                    else:
+                        response = "Error: Graph execution failed to return a state."
+
+                except Exception as e:
+                    response = f"An error occurred during execution: {e}"
+                    st.error(response)
+
+                # Stream the final response to the UI
+                if "response" in locals():
+                    st.write_stream(stream_response(response))
+
+                # Show internal logs cleanly in an expander for the current turn
+                if agent_logs:
+                    with st.expander("🧠 View Agent Internal Execution Logs"):
+                        for log in agent_logs:
+                            st.info(log)
+
+                # Save the assistant's response AND logs to state so they persist on reload
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response if "response" in locals() else "Error",
+                    "logs": agent_logs
+                })
 # --- TAB 2: Database Viewer ---
 with tab2:
     st.header("Database Tables")
