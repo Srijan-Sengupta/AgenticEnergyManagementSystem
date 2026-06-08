@@ -11,8 +11,7 @@ from app.core.config import DB_PATH
 from app.db.database import get_dynamic_schema
 from app.agent.llm import reasoning_llm, coder_llm
 
-# Ensure your logger is set to at least INFO level in your main app config to see these.
-# e.g., logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

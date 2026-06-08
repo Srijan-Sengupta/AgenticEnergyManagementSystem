@@ -7,6 +7,8 @@ pandas
 # --- LangChain & LangGraph Ecosystem ---
 langchain-core
 langchain-ollama
+langchain-groq
 langgraph
 tabulate
 pandas-stubs
+python-dotenv

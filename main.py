@@ -26,7 +26,7 @@ with st.sidebar:
     st.header("Data Management")
     st.write("Upload CSVs.")
 
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"], max_upload_size=4096)
 
     if uploaded_file is not None:
         file_path = os.path.join(DATA_DIR, uploaded_file.name)
@@ -57,29 +57,24 @@ tab1, tab2 = st.tabs(["Assistant Chat", "Database Viewer"])
 
 # --- TAB 1: Chat Interface ---
 with tab1:
-    # 1. Create a fixed-height, scrollable container for the chat history
     chat_container = st.container(height=600)
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 2. Render all existing messages INSIDE the scrollable container
-        # 2. Render all existing messages INSIDE the scrollable container
         with chat_container:
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
                     # Persist the logs/thoughts in an expander for past messages
                     if message.get("logs"):
-                        with st.expander("🧠 View Agent Internal Execution Logs"):
+                        with st.expander("View Agent Internal Execution Logs"):
                             for log in message["logs"]:
                                 st.info(log)
 
-    # 3. The chat input natively sticks to the bottom of the active tab/screen
     if prompt := st.chat_input("Ask about energy demand, supply, or outages..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
 
-        # 4. Ensure new messages are also written INSIDE the container
         with chat_container:
             with st.chat_message("user"):
                 st.markdown(prompt)
@@ -94,26 +89,19 @@ with tab1:
                         "messages": []
                     }
 
-                    # Use st.status for interactive, real-time progress tracking
                     with st.status("Initializing agents...", expanded=True) as status:
-                        # Stream through the LangGraph nodes instead of invoking all at once
                         for event in agent_app.stream(initial_state):
                             for node_name, node_state in event.items():
-                                # Dynamically update the UI text to show which agent is working
-                                status.update(label=f"⚙️ Agent `{node_name}` is working...", state="running")
-                                final_state = node_state  # Keep track of the latest state
+                                status.update(label=f"Agent `{node_name}` is working...", state="running")
+                                final_state = node_state
 
-                                # Optionally write to the status box so users see the step history
                                 st.write(f"Completed step: **{node_name}**")
 
-                        # Mark as complete and collapse the status box
-                        status.update(label="✅ Analysis complete!", state="complete", expanded=False)
+                        status.update(label="Analysis complete!", state="complete", expanded=False)
 
-                    # Process the final state after the graph finishes
                     if final_state:
                         raw_response = final_state.get("drafted_response", "Error: No response drafted.")
 
-                        # Extract DeepSeek's <think> tags to display them in the logs
                         if "<think>" in raw_response:
                             parts = raw_response.split("</think>")
                             think_content = parts[0].replace("<think>", "").strip()
@@ -123,7 +111,6 @@ with tab1:
                         else:
                             response = raw_response
 
-                        # Gather other internal graph logs
                         if final_state.get("messages"):
                             agent_logs.extend(final_state["messages"])
                     else:
@@ -133,17 +120,14 @@ with tab1:
                     response = f"An error occurred during execution: {e}"
                     st.error(response)
 
-                # Stream the final response to the UI
                 if "response" in locals():
                     st.write_stream(stream_response(response))
 
-                # Show internal logs cleanly in an expander for the current turn
                 if agent_logs:
-                    with st.expander("🧠 View Agent Internal Execution Logs"):
+                    with st.expander("View Agent Internal Execution Logs"):
                         for log in agent_logs:
                             st.info(log)
 
-                # Save the assistant's response AND logs to state so they persist on reload
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": response if "response" in locals() else "Error",
@@ -166,8 +150,7 @@ with tab2:
             selected_table = st.selectbox("Select a table to view:", tables)
 
             try:
-                df = pd.read_sql_query(f"SELECT * FROM {selected_table}", conn)
-                # FIX APPLIED HERE: Replaced use_container_width with width='stretch'
+                df = pd.read_sql_query(f"SELECT * FROM {selected_table} LIMIT 1000", conn)
                 st.dataframe(df, width='stretch')
                 st.caption(f"Showing {len(df)} rows from `{selected_table}`.")
             except Exception as e:
