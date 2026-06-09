@@ -50,7 +50,6 @@ with st.sidebar:
     st.subheader("Sample Queries:")
     st.code('"Summarize outage_reports by region"')
     st.code('"What is the total demand in the demand_reports table?"')
-    st.code('"Update the status in outage_reports to Resolved where region is North"')
 
 # --- UI Layout: Main Tabs ---
 tab1, tab2 = st.tabs(["Assistant Chat", "Database Viewer"])
