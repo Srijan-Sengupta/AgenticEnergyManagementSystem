@@ -12,3 +12,8 @@ langgraph
 tabulate
 pandas-stubs
 python-dotenv
+sentence-transformers
+langchain-huggingface
+chromadb
+torchvision
+torch

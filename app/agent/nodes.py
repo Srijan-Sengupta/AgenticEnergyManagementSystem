@@ -6,6 +6,7 @@ from typing import Literal
 from langchain_core.prompts import PromptTemplate
 from langgraph.types import Command
 
+from app.core.cache import chroma_client, cache_collection
 from app.core.state import AgentActionState, ActionClassification, SourceClassification
 from app.core.config import DB_PATH
 from app.db.database import get_dynamic_schema
@@ -135,6 +136,9 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
 
                     msg = f"Data Agent: Analyzed `{csv_file}`. Successfully appended {len(df)} rows to the `{target_table}` database."
                     updates["messages"] = state.get("messages", []) + [msg]
+                    chroma_client.delete_collection("llm_prompt_cache")
+                    cache_collection = chroma_client.get_or_create_collection("llm_prompt_cache")
+                    logger.info("Cache has been cleared")
             except Exception as e:
                 error_msg = f"Data Agent Error: Could not load {csv_file}. {e}"
                 logger.error(error_msg)
