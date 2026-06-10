@@ -151,6 +151,10 @@ def data_agent(state: AgentActionState) -> Command[Literal["analysis_agent", "re
         return Command(goto="report_agent", update=updates)
 
     elif intent in ["query", "data_modify", "report"]:
+        if intent in ["data_modify"]:
+            chroma_client.delete_collection("llm_prompt_cache")
+            cache_collection = chroma_client.get_or_create_collection("llm_prompt_cache")
+            logger.info("Cache has been cleared")
         current_schema = get_dynamic_schema(DB_PATH)
         action_type = "read-only SELECT query" if intent in ["query",
                                                              "report"] else "Data Manipulation Language (UPDATE/DELETE) query"

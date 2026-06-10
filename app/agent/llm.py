@@ -27,4 +27,4 @@ else:
 	_coder_llm = ChatGroq(model="qwen/qwen3-32b", temperature=0.0, reasoning_format="hidden")
 
 reasoning_llm = wrap_with_cache(_reasoning_llm)
-coder_llm = wrap_with_cache(_coder_llm)
+coder_llm = _coder_llm
