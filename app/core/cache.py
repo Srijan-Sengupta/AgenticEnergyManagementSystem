@@ -17,7 +17,7 @@ chroma_client = chromadb.PersistentClient(path=SEMANTIC_CACHE)
 cache_collection = chroma_client.get_or_create_collection(name="llm_prompt_cache")
 
 
-def wrap_with_cache(llm_instance, threshold=0.85):
+def wrap_with_cache(llm_instance, threshold=0.98):
 	original_invoke = llm_instance.invoke
 
 	def cached_invoke(self, prompt_value, config=None, **kwargs):
